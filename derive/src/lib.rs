@@ -18,11 +18,7 @@ lazy_static! {
 pub fn py_class(input: TokenStream) -> TokenStream {
     let _ = *LOGGER;
 
-    let source = input.to_string();
-
-    debug!("parsing source\n{}", source);
-
-    let tokens = Builder::parse(&source).unwrap().build();
+    let tokens = Builder::parse(&input.to_string()).unwrap().build();
 
     debug!("generated code\n{}", format::code(tokens.as_str()));
 
