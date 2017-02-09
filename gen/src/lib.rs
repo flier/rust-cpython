@@ -8,6 +8,7 @@ extern crate syn;
 #[macro_use]
 extern crate quote;
 extern crate syntex_syntax;
+extern crate syntex_errors;
 extern crate cargo;
 extern crate rustfmt;
 

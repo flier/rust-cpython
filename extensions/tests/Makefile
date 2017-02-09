@@ -39,7 +39,7 @@ stamps/rust-cpython-$(PY): $(call rwildcard,../../src,*.rs) Makefile | stamps
 	rustc $< -g -L $(TARGETDIR) -L $(TARGETDIR)/deps -Z unstable-options --pretty=expanded -o $@
 
 hello.out: hello.so
-	python$(PY) -c "import hello; hello.run(hello.val())" 2>&1 | tee $@
+	/usr/bin/python -c "import hello; hello.run(hello.val())" 2>&1 | tee $@
 
 all: stamps/test-hello
 stamps/test-hello: hello.out
@@ -48,7 +48,7 @@ stamps/test-hello: hello.out
 	@touch $@
 
 custom_class.out: custom_class.so
-	python$(PY) -c "import custom_class; custom_class.MyType(42).a()" 2>&1 | tee $@
+	/usr/bin/python -c "import custom_class; custom_class.MyType(42).a()" 2>&1 | tee $@
 
 all: stamps/test-custom_class
 stamps/test-custom_class: custom_class.out
@@ -57,6 +57,6 @@ stamps/test-custom_class: custom_class.out
 
 all: stamps/test-btree
 stamps/test-btree: test_btree.py btree.so
-	python$(PY) test_btree.py
+	/usr/bin/python test_btree.py
 	@touch $@
 
