@@ -1,6 +1,31 @@
-#[macro_use] extern crate cpython;
+#[macro_use]
+extern crate cpython;
+#[macro_use]
+extern crate cpython_derive;
 
 use cpython::{PyObject, PyResult, Python, PyTuple, PyDict};
+
+#[derive(PyClass)]
+pub struct Hello {}
+
+impl Hello {
+    pub fn func(a: &str, b: i32) -> PyResult<String> {
+        Ok(format!("func({}, {})", a, b))
+    }
+
+    pub fn run(py: Python, args: &PyTuple, kwargs: Option<&PyDict>) -> PyResult<PyObject> {
+        println!("Rust says: Hello Python!");
+        for arg in args.iter(py) {
+            println!("Rust got {}", arg);
+        }
+        if let Some(kwargs) = kwargs {
+            for (key, val) in kwargs.items(py) {
+                println!("{} = {}", key, val);
+            }
+        }
+        Ok(py.None())
+    }
+}
 
 // Our module is named 'hello', and can be imported using `import hello`.
 // This requires that the output binary file is named `hello.so` (or Windows: `hello.pyd`).
@@ -35,4 +60,3 @@ fn run(py: Python, args: &PyTuple, kwargs: Option<&PyDict>) -> PyResult<PyObject
     }
     Ok(py.None())
 }
-

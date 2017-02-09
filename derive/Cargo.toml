@@ -1,0 +1,15 @@
+[package]
+name = "cpython-derive"
+version = "0.1.0"
+authors = ["Flier Lu <flier.lu@gmail.com>"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+log = "0.3"
+env_logger = "0.4"
+lazy_static = "0.2"
+
+[dependencies.cpython-gen]
+path = "../gen"

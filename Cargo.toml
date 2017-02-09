@@ -34,7 +34,7 @@ appveyor = { repository = "dgrunwald/rust-cpython" }
 libc = "0.2"
 num-traits = "0.1"
 
-# These features are both optional, but you must pick one to 
+# These features are both optional, but you must pick one to
 # indicate which python ffi you are trying to bind to.
 [dependencies.python27-sys]
 optional = true
@@ -63,7 +63,7 @@ extension-module-2-7 = [ "python27-sys/extension-module" ]
 
 
 # Optional features to support explicitly specifying python minor version.
-# If you don't care which minor version, just specify python3-sys as a 
+# If you don't care which minor version, just specify python3-sys as a
 # feature.
 python-3-6 = ["python3-sys/python-3-6"]
 python-3-5 = ["python3-sys/python-3-5"]
@@ -72,5 +72,5 @@ python-3-4 = ["python3-sys/python-3-4"]
 #pep-384 = ["python3-sys/pep-384"]
 
 [workspace]
-members = ["python27-sys", "python3-sys", "extensions/hello"]
+members = ["python27-sys", "python3-sys", "derive", "gen", "extensions/hello"]
 
