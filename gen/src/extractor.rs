@@ -102,16 +102,20 @@ impl Extractor {
         classes
     }
 
-    pub fn find_fields<'a>(&self, item: &'a P<ast::Item>) -> Option<&'a Vec<ast::StructField>> {
+    pub fn find_properties<'a>(&self, item: &'a P<ast::Item>) -> Option<Vec<&'a ast::StructField>> {
         match item.node {
             ast::ItemKind::Struct(ref data, _) |
             ast::ItemKind::Union(ref data, _) => {
                 match *data {
                     ast::VariantData::Struct(ref fields, _) |
                     ast::VariantData::Tuple(ref fields, _) => {
-                        debug!("found {} fields: [{}]",
-                               fields.len(),
-                               fields.iter()
+                        let properties = fields.iter()
+                            .filter(|field| field.vis == ast::Visibility::Public)
+                            .collect::<Vec<&ast::StructField>>();
+
+                        debug!("found {} properties: [{}]",
+                               properties.len(),
+                               properties.iter()
                                    .map(|field| {
                                        field.ident
                                            .map(|ident| ident.name)
@@ -121,7 +125,7 @@ impl Extractor {
                                    .collect::<Vec<String>>()
                                    .join(","));
 
-                        Some(fields)
+                        Some(properties)
                     }
                     _ => None,
                 }

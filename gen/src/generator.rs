@@ -84,7 +84,7 @@ impl Generated {
             let py_classes = extractor.find_classes(&c.module.items);
 
             for clazz in py_classes {
-                if let Some(py_fields) = extractor.find_fields(&clazz) {}
+                if let Some(py_properties) = extractor.find_properties(&clazz) {}
 
                 let py_members = extractor.find_members(&c.module.items, clazz);
             }
