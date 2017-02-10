@@ -34,6 +34,36 @@ impl Generator {
         self
     }
 
+    pub fn whitelist_type<T: Into<String>>(&mut self, pattern: T) -> &mut Self {
+        self.options.whitelist_types.push(pattern.into());
+        self
+    }
+
+    pub fn whitelist_field<T: Into<String>>(&mut self, pattern: T) -> &mut Self {
+        self.options.whitelist_fields.push(pattern.into());
+        self
+    }
+
+    pub fn whitelist_method<T: Into<String>>(&mut self, pattern: T) -> &mut Self {
+        self.options.whitelist_methods.push(pattern.into());
+        self
+    }
+
+    pub fn blacklist_type<T: Into<String>>(&mut self, pattern: T) -> &mut Self {
+        self.options.blacklist_types.push(pattern.into());
+        self
+    }
+
+    pub fn blacklist_field<T: Into<String>>(&mut self, pattern: T) -> &mut Self {
+        self.options.blacklist_fields.push(pattern.into());
+        self
+    }
+
+    pub fn blacklist_method<T: Into<String>>(&mut self, pattern: T) -> &mut Self {
+        self.options.blacklist_methods.push(pattern.into());
+        self
+    }
+
     pub fn generate(&self) -> Result<Generated> {
         Generated::generate(&self.options)
     }
@@ -47,7 +77,7 @@ pub struct Generated {
 
 impl Generated {
     fn generate(options: &Options) -> Result<Self> {
-        let extractor = Extractor::new(&options);
+        let extractor = Extractor::new(&options)?;
         let config = Config::default()?;
         let workspace = extractor.find_workspace(&config)?;
         let packages = extractor.find_packages(&workspace);

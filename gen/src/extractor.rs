@@ -7,7 +7,9 @@ use syntex_syntax::symbol::Symbol;
 use syntex_syntax::symbol::keywords;
 use syntex_syntax::ptr::P;
 
-use errors::Result;
+use regex::RegexSet;
+
+use errors::*;
 use options::Options;
 
 pub struct Extractor {
@@ -15,16 +17,52 @@ pub struct Extractor {
     packages: Vec<String>,
     lib_kind: &'static str,
     derive_attr: Symbol,
+    pub whitelist_types: Option<RegexSet>,
+    pub whitelist_fields: Option<RegexSet>,
+    pub whitelist_methods: Option<RegexSet>,
+    pub blacklist_types: Option<RegexSet>,
+    pub blacklist_fields: Option<RegexSet>,
+    pub blacklist_methods: Option<RegexSet>,
 }
 
 impl Extractor {
-    pub fn new(options: &Options) -> Self {
-        Extractor {
+    pub fn new(options: &Options) -> Result<Self> {
+        Ok(Extractor {
             manifest_path: options.manifest_path.clone(),
             packages: options.packages.clone(),
             lib_kind: "cdylib",
             derive_attr: Symbol::intern("PyClass"),
-        }
+            whitelist_types: if options.whitelist_types.is_empty() {
+                None
+            } else {
+                Some(RegexSet::new(&options.whitelist_types)?)
+            },
+            whitelist_fields: if options.whitelist_fields.is_empty() {
+                None
+            } else {
+                Some(RegexSet::new(&options.whitelist_fields)?)
+            },
+            whitelist_methods: if options.whitelist_methods.is_empty() {
+                None
+            } else {
+                Some(RegexSet::new(&options.whitelist_methods)?)
+            },
+            blacklist_types: if options.blacklist_types.is_empty() {
+                None
+            } else {
+                Some(RegexSet::new(&options.blacklist_types)?)
+            },
+            blacklist_fields: if options.blacklist_fields.is_empty() {
+                None
+            } else {
+                Some(RegexSet::new(&options.blacklist_fields)?)
+            },
+            blacklist_methods: if options.blacklist_methods.is_empty() {
+                None
+            } else {
+                Some(RegexSet::new(&options.blacklist_methods)?)
+            },
+        })
     }
 
     pub fn find_workspace<'a>(&self, config: &'a Config) -> Result<Workspace<'a>> {
@@ -74,6 +112,12 @@ impl Extractor {
                 _ => false,
             })
             .filter(|item| {
+                let name = item.ident.name.as_str();
+
+                self.whitelist_types.as_ref().map_or(false, |r| r.is_match(&*name)) ||
+                self.blacklist_types.as_ref().map_or(true, |r| !r.is_match(&*name))
+            })
+            .filter(|item| {
                 item.attrs.iter().any(|ref attr| {
                     attr.value.name == Symbol::intern("derive") &&
                     match attr.value.node {
@@ -91,7 +135,7 @@ impl Extractor {
             })
             .collect::<Vec<&P<ast::Item>>>();
 
-        debug!("found {} classes with derive({}) attribute: [{}]",
+        debug!("found {} classes with `{}` attribute: [{}]",
                classes.len(),
                self.derive_attr,
                classes.iter()
@@ -111,9 +155,21 @@ impl Extractor {
                     ast::VariantData::Tuple(ref fields, _) => {
                         let properties = fields.iter()
                             .filter(|field| field.vis == ast::Visibility::Public)
+                            .filter(|field| {
+                                field.ident.map_or(false, |ident| {
+                                    let name = ident.name.as_str();
+
+                                    self.whitelist_fields
+                                        .as_ref()
+                                        .map_or(false, |r| r.is_match(&*name)) ||
+                                    self.blacklist_fields
+                                        .as_ref()
+                                        .map_or(true, |r| !r.is_match(&*name))
+                                })
+                            })
                             .collect::<Vec<&ast::StructField>>();
 
-                        debug!("found {} properties: [{}]",
+                        debug!("found {} public properties: [{}]",
                                properties.len(),
                                properties.iter()
                                    .map(|field| {
@@ -134,25 +190,41 @@ impl Extractor {
         }
     }
 
-    pub fn find_members(&self,
-                        items: &Vec<P<ast::Item>>,
-                        clazz: &P<ast::Item>)
-                        -> Vec<ast::ImplItem> {
+    pub fn find_members<'a>(&self,
+                            items: &'a Vec<P<ast::Item>>,
+                            clazz: &P<ast::Item>)
+                            -> Vec<&'a ast::ImplItem> {
         let members = items.iter()
             .flat_map(|item| match item.node {
                 ast::ItemKind::Impl(_, _, _, None, ref ty, ref members) => {
                     if ty.id == clazz.id {
-                        Some(members)
+                        Some(members.iter()
+                            .filter(|member| member.vis == ast::Visibility::Public)
+                            .filter(|member| {
+                                let name = member.ident.name.as_str();
+
+                                self.whitelist_methods
+                                    .as_ref()
+                                    .map_or(false, |r| r.is_match(&*name)) ||
+                                self.blacklist_methods
+                                    .as_ref()
+                                    .map_or(true, |r| !r.is_match(&*name))
+                            })
+                            .filter(|member| match member.node {
+                                ast::ImplItemKind::Method(..) => true,
+                                _ => false, // TODO handle Associated Constants
+                            })
+                            .collect::<Vec<&ast::ImplItem>>())
                     } else {
                         None
                     }
                 }
                 _ => None,
             })
-            .flat_map(|members| members.clone())
-            .collect::<Vec<ast::ImplItem>>();
+            .flat_map(|members| members)
+            .collect::<Vec<&ast::ImplItem>>();
 
-        debug!("found {} members from class {}: [{}]",
+        debug!("found {} public members from class {}: [{}]",
                members.len(),
                clazz.ident,
                members.iter()
