@@ -4,6 +4,8 @@ use quote;
 use super::errors::*;
 
 pub struct Builder {
+    prefix: String,
+    suffix: String,
     ast: syn::MacroInput,
 }
 
@@ -11,7 +13,11 @@ impl Builder {
     pub fn parse(s: &str) -> Result<Self> {
         let ast = syn::parse_macro_input(s)?;
 
-        Ok(Builder { ast: ast })
+        Ok(Builder {
+            prefix: String::from("Py"),
+            suffix: String::new(),
+            ast: ast,
+        })
     }
 
     pub fn prefix(&self) -> quote::Ident {
@@ -19,7 +25,7 @@ impl Builder {
     }
 
     pub fn class_name(&self) -> quote::Ident {
-        quote::Ident::from(format!("{}Wrapper", &self.ast.ident))
+        quote::Ident::from(format!("{}{}{}", &self.prefix, &self.ast.ident, &self.suffix))
     }
 
     pub fn build(&self) -> quote::Tokens {
