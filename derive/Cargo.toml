@@ -10,6 +10,8 @@ proc-macro = true
 log = "0.3"
 env_logger = "0.4"
 lazy_static = "0.2"
+syn = "0.11"
+quote = "0.3"
 
 [dependencies.cpython-gen]
 path = "../gen"
