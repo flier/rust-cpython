@@ -2,9 +2,8 @@ use std::path::Path;
 use std::fs::OpenOptions;
 use std::io::prelude::*;
 
-use cargo::core::{Workspace, Manifest, Package, Target, TargetKind, LibKind};
+use cargo::core::{Workspace, Package};
 use cargo::util::Config;
-use cargo::util::important_paths::find_root_manifest_for_wd;
 
 use syntex_syntax::ast;
 use syntex_syntax::symbol::Symbol;
@@ -15,6 +14,7 @@ use syntex_syntax::parse::{ParseSess, parse_crate_from_file};
 use quote;
 
 use super::errors::*;
+use super::extractor::Extractor;
 
 #[derive(Debug, Clone)]
 #[doc(hidden)]
@@ -72,26 +72,15 @@ pub struct Generated {
 impl Generated {
     fn generate(options: &GenerateOptions) -> Result<Self> {
         let config = Config::default()?;
-        let root = find_root_manifest_for_wd(options.manifest_path.clone(), config.cwd())?;
-        let workspace = Workspace::new(&root, &config)?;
-
-        debug!("found workspace @ `{}` with members: [{}]",
-               workspace.root().to_str().unwrap(),
-               workspace.members().map(|member| member.name()).collect::<Vec<&str>>().join(","));
-
-        let packages = if options.packages.is_empty() {
-            vec![workspace.current()?]
-        } else {
-            workspace.members()
-                .filter(|ref p| options.packages.contains(&String::from(p.name())))
-                .collect()
-        };
-        let items =
-            packages.iter().flat_map(|p| Generated::process_package(p)).flat_map(|p| p).collect();
+        let workspace = Extractor::find_workspace(options.manifest_path.clone(), &config)?;
+        let packages = Extractor::find_packages(&workspace, &options.packages);
 
         let module = ast::Mod {
             inner: DUMMY_SP,
-            items: items,
+            items: packages.iter()
+                .flat_map(|p| Generated::process_package(p))
+                .flat_map(|p| p)
+                .collect(),
         };
 
         Ok(Generated {
@@ -105,13 +94,7 @@ impl Generated {
                package.name(),
                package.root().to_str().unwrap());
 
-        let targets = Generated::find_targets(package.manifest(),
-                                              LibKind::Other(String::from("cdylib")));
-
-        debug!("found {} targets to `cdylib`: [{}]",
-               targets.len(),
-               targets.iter().map(|target| target.crate_name()).collect::<Vec<String>>().join(","));
-
+        let targets = Extractor::find_targets(package.manifest(), "cdylib");
         let parse_session = ParseSess::new();
 
         for target in targets {
@@ -121,81 +104,18 @@ impl Generated {
 
             let c = parse_crate_from_file(target.src_path(), &parse_session)?;
 
-            let py_classes = Generated::find_classes(&c.module.items, Symbol::intern("PyClass"));
-
-            debug!("found {} classes with `PyClass`: [{}]",
-                   py_classes.len(),
-                   py_classes.iter()
-                       .map(|clazz| clazz.ident.to_string())
-                       .collect::<Vec<String>>()
-                       .join(","));
+            let py_classes = Extractor::find_classes(&c.module.items, Symbol::intern("PyClass"));
 
             for clazz in py_classes {
-                let py_members = Generated::find_members(&c.module.items, clazz);
+                if let Some(py_fields) = Extractor::find_fields(&clazz) {}
 
-                debug!("found {} members: [{}]",
-                       py_members.len(),
-                       py_members.iter()
-                           .map(|member| member.ident.to_string())
-                           .collect::<Vec<String>>()
-                           .join(","));
+                let py_members = Extractor::find_members(&c.module.items, clazz);
             }
         }
 
         let mut items = Vec::new();
 
         Ok(items)
-    }
-
-    fn find_targets(manifest: &Manifest, lib_kind: LibKind) -> Vec<&Target> {
-        manifest.targets()
-            .iter()
-            .filter(|ref target| match *target.kind() {
-                TargetKind::Lib(ref kinds) => kinds.iter().any(|kind| *kind == lib_kind),
-                _ => false,
-            })
-            .collect()
-    }
-
-    fn find_classes(items: &Vec<P<ast::Item>>, derive_attr: Symbol) -> Vec<&P<ast::Item>> {
-        items.iter()
-            .filter(|item| match item.node {
-                ast::ItemKind::Struct(..) => true,
-                _ => false,
-            })
-            .filter(|item| {
-                item.attrs.iter().any(|ref attr| {
-                    attr.value.name == Symbol::intern("derive") &&
-                    match attr.value.node {
-                        ast::MetaItemKind::List(ref items) => {
-                            items.iter().any(|item| match item.node {
-                                ast::NestedMetaItemKind::MetaItem(ref item) => {
-                                    item.name == derive_attr
-                                }
-                                ast::NestedMetaItemKind::Literal(_) => false,
-                            })
-                        }
-                        _ => false,
-                    }
-                })
-            })
-            .collect()
-    }
-
-    fn find_members(items: &Vec<P<ast::Item>>, clazz: &P<ast::Item>) -> Vec<ast::ImplItem> {
-        items.iter()
-            .flat_map(|item| match item.node {
-                ast::ItemKind::Impl(_, _, _, None, ref ty, ref members) => {
-                    if ty.id == clazz.id {
-                        Some(members)
-                    } else {
-                        None
-                    }
-                }
-                _ => None,
-            })
-            .flat_map(|members| members.clone())
-            .collect()
     }
 
     pub fn write_to<P: AsRef<Path>>(&self, path: P) -> Result<()> {

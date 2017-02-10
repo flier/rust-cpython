@@ -14,6 +14,7 @@ extern crate rustfmt;
 
 mod errors;
 mod builder;
+mod extractor;
 mod generator;
 pub mod format;
 
