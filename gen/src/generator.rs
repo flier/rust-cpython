@@ -6,11 +6,9 @@ use cargo::core::Package;
 use cargo::util::Config;
 
 use syntex_syntax::ast;
-use syntex_syntax::ptr::P;
-use syntex_syntax::codemap::DUMMY_SP;
 use syntex_syntax::parse::{ParseSess, parse_crate_from_file};
 
-use quote::Tokens;
+use quote::{Tokens, ToTokens};
 
 use errors::*;
 use options::Options;
@@ -72,20 +70,36 @@ impl Generator {
 }
 
 #[derive(Debug, Clone)]
-struct PyProperty(ast::StructField);
-
-#[derive(Debug, Clone)]
-struct PyMethod(ast::ImplItem);
-
-#[derive(Debug, Clone)]
 struct PyClass {
-    properties: Vec<PyProperty>,
-    methods: Vec<PyMethod>,
+    ident: ast::Ident,
+    properties: Vec<ast::StructField>,
+    methods: Vec<ast::ImplItem>,
+}
+impl ToTokens for PyClass {
+    fn to_tokens(&self, tokens: &mut Tokens) {
+        let class_name = self.ident.to_string();
+
+        let impl_class = quote!{
+            impl #class_name {
+
+            }
+        };
+
+        tokens.append(impl_class.as_str())
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct Generated {
     classes: Vec<PyClass>,
+}
+
+impl ToTokens for Generated {
+    fn to_tokens(&self, tokens: &mut Tokens) {
+        for clazz in self.classes.iter() {
+            clazz.to_tokens(tokens)
+        }
+    }
 }
 
 impl Generated {
@@ -120,16 +134,20 @@ impl Generated {
                         extractor.find_classes(&krate.module.items)
                             .iter()
                             .map(|clazz| {
+                                let properties = extractor.find_properties(&clazz)
+                                    .unwrap_or(Vec::new())
+                                    .iter()
+                                    .map(|p| (*p).clone())
+                                    .collect::<Vec<ast::StructField>>();
+                                let methods = extractor.find_members(&krate.module.items, &clazz)
+                                    .iter()
+                                    .map(|m| (*m).clone())
+                                    .collect::<Vec<ast::ImplItem>>();
+
                                 PyClass {
-                                    properties: extractor.find_properties(&clazz)
-                                        .unwrap_or(Vec::new())
-                                        .iter()
-                                        .map(|p| PyProperty((*p).clone()))
-                                        .collect(),
-                                    methods: extractor.find_members(&krate.module.items, clazz)
-                                        .iter()
-                                        .map(|m| PyMethod((*m).clone()))
-                                        .collect(),
+                                    ident: clazz.ident,
+                                    properties: properties,
+                                    methods: methods,
                                 }
                             })
                             .collect()
