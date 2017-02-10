@@ -6,10 +6,13 @@ extern crate cpython_derive;
 use cpython::{PyObject, PyResult, Python, PyTuple, PyDict};
 
 #[derive(PyClass)]
-pub struct Hello {}
+pub struct Hello {
+    password: String,
+    pub name: String,
+}
 
 impl Hello {
-    pub fn func(a: &str, b: i32) -> PyResult<String> {
+    pub fn func(&self, a: &str, b: i32) -> PyResult<String> {
         Ok(format!("func({}, {})", a, b))
     }
 
@@ -24,6 +27,14 @@ impl Hello {
             }
         }
         Ok(py.None())
+    }
+
+    fn private(&self) {}
+}
+
+impl Hello {
+    pub fn hello(&self) {
+        println!("hello {}", self.name);
     }
 }
 
