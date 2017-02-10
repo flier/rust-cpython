@@ -5,7 +5,6 @@ extern crate log;
 #[macro_use]
 extern crate error_chain;
 extern crate regex;
-extern crate syn;
 #[macro_use]
 extern crate quote;
 extern crate syntex_syntax;
