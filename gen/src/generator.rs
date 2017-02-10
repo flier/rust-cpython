@@ -10,6 +10,8 @@ use syntex_syntax::ptr::P;
 use syntex_syntax::codemap::DUMMY_SP;
 use syntex_syntax::parse::{ParseSess, parse_crate_from_file};
 
+use quote::Tokens;
+
 use errors::*;
 use options::Options;
 use extractor::Extractor;
@@ -70,9 +72,20 @@ impl Generator {
 }
 
 #[derive(Debug, Clone)]
+struct PyProperty(ast::StructField);
+
+#[derive(Debug, Clone)]
+struct PyMethod(ast::ImplItem);
+
+#[derive(Debug, Clone)]
+struct PyClass {
+    properties: Vec<PyProperty>,
+    methods: Vec<PyMethod>,
+}
+
+#[derive(Debug, Clone)]
 pub struct Generated {
-    module: ast::Mod,
-    attributes: Vec<ast::Attribute>,
+    classes: Vec<PyClass>,
 }
 
 impl Generated {
@@ -81,48 +94,54 @@ impl Generated {
         let config = Config::default()?;
         let workspace = extractor.find_workspace(&config)?;
         let packages = extractor.find_packages(&workspace);
+        let classes = packages.iter()
+            .flat_map(|package| Generated::process_package(package, &extractor))
+            .collect();
 
-        let module = ast::Mod {
-            inner: DUMMY_SP,
-            items: packages.iter()
-                .flat_map(|p| Generated::process_package(p, &extractor))
-                .flat_map(|p| p)
-                .collect(),
-        };
-
-        Ok(Generated {
-            module: module,
-            attributes: Vec::new(),
-        })
+        Ok(Generated { classes: classes })
     }
 
-    fn process_package(package: &Package, extractor: &Extractor) -> Result<Vec<P<ast::Item>>> {
+    fn process_package(package: &Package, extractor: &Extractor) -> Vec<PyClass> {
         debug!("processing package `{}` @ {}",
                package.name(),
                package.root().to_str().unwrap());
 
-        let targets = extractor.find_targets(package.manifest());
         let parse_session = ParseSess::new();
 
-        for target in targets {
-            debug!("parsing `cdylib` crate `{}` @ {}",
-                   target.crate_name(),
-                   target.src_path().to_str().unwrap());
+        extractor.find_targets(package.manifest())
+            .iter()
+            .flat_map(|target| {
+                debug!("parsing `cdylib` crate `{}` @ {}",
+                       target.crate_name(),
+                       target.src_path().to_str().unwrap());
 
-            let c = parse_crate_from_file(target.src_path(), &parse_session)?;
+                match parse_crate_from_file(target.src_path(), &parse_session) {
+                    Ok(krate) => {
+                        extractor.find_classes(&krate.module.items)
+                            .iter()
+                            .map(|clazz| {
+                                PyClass {
+                                    properties: extractor.find_properties(&clazz)
+                                        .unwrap_or(Vec::new())
+                                        .iter()
+                                        .map(|p| PyProperty((*p).clone()))
+                                        .collect(),
+                                    methods: extractor.find_members(&krate.module.items, clazz)
+                                        .iter()
+                                        .map(|m| PyMethod((*m).clone()))
+                                        .collect(),
+                                }
+                            })
+                            .collect()
+                    }
+                    Err(err) => {
+                        warn!("fail to parse crate `{}`, {:?}", target.crate_name(), err);
 
-            let py_classes = extractor.find_classes(&c.module.items);
-
-            for clazz in py_classes {
-                if let Some(py_properties) = extractor.find_properties(&clazz) {}
-
-                let py_members = extractor.find_members(&c.module.items, clazz);
-            }
-        }
-
-        let mut items = Vec::new();
-
-        Ok(items)
+                        Vec::new()
+                    }
+                }
+            })
+            .collect()
     }
 
     pub fn write_to<P: AsRef<Path>>(&self, path: P) -> Result<()> {
