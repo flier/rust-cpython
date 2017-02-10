@@ -8,12 +8,27 @@ use syntex_syntax::symbol::keywords;
 use syntex_syntax::ptr::P;
 
 use errors::Result;
+use options::Options;
 
-pub struct Extractor {}
+pub struct Extractor {
+    manifest_path: Option<String>,
+    packages: Vec<String>,
+    lib_kind: &'static str,
+    derive_attr: Symbol,
+}
 
 impl Extractor {
-    pub fn find_workspace(manifest_path: Option<String>, config: &Config) -> Result<Workspace> {
-        let root = find_root_manifest_for_wd(manifest_path, config.cwd())?;
+    pub fn new(options: &Options) -> Self {
+        Extractor {
+            manifest_path: options.manifest_path.clone(),
+            packages: options.packages.clone(),
+            lib_kind: "cdylib",
+            derive_attr: Symbol::intern("PyClass"),
+        }
+    }
+
+    pub fn find_workspace<'a>(&self, config: &'a Config) -> Result<Workspace<'a>> {
+        let root = find_root_manifest_for_wd(self.manifest_path.clone(), config.cwd())?;
         let workspace = Workspace::new(&root, &config)?;
 
         debug!("found workspace @ `{}` with members: [{}]",
@@ -23,22 +38,22 @@ impl Extractor {
         Ok(workspace)
     }
 
-    pub fn find_packages<'a>(workspace: &'a Workspace, packages: &Vec<String>) -> Vec<&'a Package> {
-        if packages.is_empty() {
+    pub fn find_packages<'a>(&self, workspace: &'a Workspace) -> Vec<&'a Package> {
+        if self.packages.is_empty() {
             vec![workspace.current().unwrap()]
         } else {
             workspace.members()
-                .filter(|ref p| packages.contains(&String::from(p.name())))
+                .filter(|ref p| self.packages.contains(&String::from(p.name())))
                 .collect()
         }
     }
 
-    pub fn find_targets<'a>(manifest: &'a Manifest, lib_kind: &str) -> Vec<&'a Target> {
+    pub fn find_targets<'a>(&self, manifest: &'a Manifest) -> Vec<&'a Target> {
         let targets = manifest.targets()
             .iter()
             .filter(|ref target| match *target.kind() {
                 TargetKind::Lib(ref kinds) => {
-                    kinds.iter().any(|kind| kind.crate_type() == lib_kind)
+                    kinds.iter().any(|kind| kind.crate_type() == self.lib_kind)
                 }
                 _ => false,
             })
@@ -46,13 +61,13 @@ impl Extractor {
 
         debug!("found {} targets to `{}`: [{}]",
                targets.len(),
-               lib_kind,
+               self.lib_kind,
                targets.iter().map(|target| target.crate_name()).collect::<Vec<String>>().join(","));
 
         targets
     }
 
-    pub fn find_classes(items: &Vec<P<ast::Item>>, derive_attr: Symbol) -> Vec<&P<ast::Item>> {
+    pub fn find_classes<'a>(&self, items: &'a Vec<P<ast::Item>>) -> Vec<&'a P<ast::Item>> {
         let classes = items.iter()
             .filter(|item| match item.node {
                 ast::ItemKind::Struct(..) => true,
@@ -65,7 +80,7 @@ impl Extractor {
                         ast::MetaItemKind::List(ref items) => {
                             items.iter().any(|item| match item.node {
                                 ast::NestedMetaItemKind::MetaItem(ref item) => {
-                                    item.name == derive_attr
+                                    item.name == self.derive_attr
                                 }
                                 ast::NestedMetaItemKind::Literal(_) => false,
                             })
@@ -78,7 +93,7 @@ impl Extractor {
 
         debug!("found {} classes with derive({}) attribute: [{}]",
                classes.len(),
-               derive_attr,
+               self.derive_attr,
                classes.iter()
                    .map(|clazz| clazz.ident.to_string())
                    .collect::<Vec<String>>()
@@ -87,7 +102,7 @@ impl Extractor {
         classes
     }
 
-    pub fn find_fields(item: &P<ast::Item>) -> Option<&Vec<ast::StructField>> {
+    pub fn find_fields<'a>(&self, item: &'a P<ast::Item>) -> Option<&'a Vec<ast::StructField>> {
         match item.node {
             ast::ItemKind::Struct(ref data, _) |
             ast::ItemKind::Union(ref data, _) => {
@@ -115,7 +130,10 @@ impl Extractor {
         }
     }
 
-    pub fn find_members(items: &Vec<P<ast::Item>>, clazz: &P<ast::Item>) -> Vec<ast::ImplItem> {
+    pub fn find_members(&self,
+                        items: &Vec<P<ast::Item>>,
+                        clazz: &P<ast::Item>)
+                        -> Vec<ast::ImplItem> {
         let members = items.iter()
             .flat_map(|item| match item.node {
                 ast::ItemKind::Impl(_, _, _, None, ref ty, ref members) => {

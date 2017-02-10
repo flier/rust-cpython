@@ -2,50 +2,26 @@ use std::path::Path;
 use std::fs::OpenOptions;
 use std::io::prelude::*;
 
-use cargo::core::{Workspace, Package};
+use cargo::core::Package;
 use cargo::util::Config;
 
 use syntex_syntax::ast;
-use syntex_syntax::symbol::Symbol;
 use syntex_syntax::ptr::P;
 use syntex_syntax::codemap::DUMMY_SP;
 use syntex_syntax::parse::{ParseSess, parse_crate_from_file};
 
-use quote;
-
-use super::errors::*;
-use super::extractor::Extractor;
-
-#[derive(Debug, Clone)]
-#[doc(hidden)]
-pub struct GenerateOptions {
-    manifest_path: Option<String>,
-    packages: Vec<String>,
-}
-
-impl GenerateOptions {
-    pub fn new() -> Self {
-        Default::default()
-    }
-}
-
-impl Default for GenerateOptions {
-    fn default() -> Self {
-        GenerateOptions {
-            manifest_path: None,
-            packages: Vec::new(),
-        }
-    }
-}
+use errors::*;
+use options::Options;
+use extractor::Extractor;
 
 #[derive(Debug, Clone)]
 pub struct Generator {
-    options: GenerateOptions,
+    options: Options,
 }
 
 impl Generator {
     pub fn new() -> Self {
-        Generator { options: Default::default() }
+        Generator { options: Options::new() }
     }
 
     pub fn manifest_path<T: Into<String>>(&mut self, path: T) -> &mut Self {
@@ -70,15 +46,16 @@ pub struct Generated {
 }
 
 impl Generated {
-    fn generate(options: &GenerateOptions) -> Result<Self> {
+    fn generate(options: &Options) -> Result<Self> {
+        let extractor = Extractor::new(&options);
         let config = Config::default()?;
-        let workspace = Extractor::find_workspace(options.manifest_path.clone(), &config)?;
-        let packages = Extractor::find_packages(&workspace, &options.packages);
+        let workspace = extractor.find_workspace(&config)?;
+        let packages = extractor.find_packages(&workspace);
 
         let module = ast::Mod {
             inner: DUMMY_SP,
             items: packages.iter()
-                .flat_map(|p| Generated::process_package(p))
+                .flat_map(|p| Generated::process_package(p, &extractor))
                 .flat_map(|p| p)
                 .collect(),
         };
@@ -89,12 +66,12 @@ impl Generated {
         })
     }
 
-    fn process_package(package: &Package) -> Result<Vec<P<ast::Item>>> {
+    fn process_package(package: &Package, extractor: &Extractor) -> Result<Vec<P<ast::Item>>> {
         debug!("processing package `{}` @ {}",
                package.name(),
                package.root().to_str().unwrap());
 
-        let targets = Extractor::find_targets(package.manifest(), "cdylib");
+        let targets = extractor.find_targets(package.manifest());
         let parse_session = ParseSess::new();
 
         for target in targets {
@@ -104,12 +81,12 @@ impl Generated {
 
             let c = parse_crate_from_file(target.src_path(), &parse_session)?;
 
-            let py_classes = Extractor::find_classes(&c.module.items, Symbol::intern("PyClass"));
+            let py_classes = extractor.find_classes(&c.module.items);
 
             for clazz in py_classes {
-                if let Some(py_fields) = Extractor::find_fields(&clazz) {}
+                if let Some(py_fields) = extractor.find_fields(&clazz) {}
 
-                let py_members = Extractor::find_members(&c.module.items, clazz);
+                let py_members = extractor.find_members(&c.module.items, clazz);
             }
         }
 

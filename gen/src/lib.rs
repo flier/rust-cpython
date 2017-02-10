@@ -13,6 +13,7 @@ extern crate cargo;
 extern crate rustfmt;
 
 mod errors;
+mod options;
 mod builder;
 mod extractor;
 mod generator;
