@@ -12,5 +12,7 @@ pub fn code(src: &str) -> String {
 
     format_input(Input::Text(String::from(src)), &config, Some(&mut cur)).unwrap();
 
+    cur.set_position(0);
+
     String::from_utf8(cur.into_inner()).unwrap()
 }

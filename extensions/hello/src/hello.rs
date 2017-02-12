@@ -9,6 +9,8 @@ use cpython::{PyObject, PyResult, Python, PyTuple, PyDict};
 pub struct Hello {
     password: String,
     pub name: String,
+    pub age: usize,
+    pub employeed: bool,
 }
 
 impl Hello {
@@ -37,6 +39,8 @@ impl Hello {
         println!("hello {}", self.name);
     }
 }
+
+include!(concat!(env!("OUT_DIR"), "/generated.rs"));
 
 // Our module is named 'hello', and can be imported using `import hello`.
 // This requires that the output binary file is named `hello.so` (or Windows: `hello.pyd`).
